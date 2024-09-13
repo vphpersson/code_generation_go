@@ -3,10 +3,13 @@ package code_generation
 import (
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
 )
+
+var defaultPackagePath = "main"
 
 type ImportSet map[string]bool
 
@@ -15,28 +18,12 @@ func (importSet ImportSet) Generate() string {
 		return ""
 	}
 
-	var imports []string
-	for imp := range importSet {
-		imports = append(imports, fmt.Sprintf("\t\"%importSet\"", imp))
+	var importEntries []string
+	for importPath := range importSet {
+		importEntries = append(importEntries, fmt.Sprintf("\t\"%s\"", importPath))
 	}
-	return fmt.Sprintf("import (\n%importSet\n)", strings.Join(imports, "\n"))
+	return fmt.Sprintf("import (\n%s\n)", strings.Join(importEntries, "\n"))
 }
-
-//func GenerateStructLiteral(val reflect.Value) (string, *ImportSet, error) {
-//	if val.Kind() == reflect.Ptr {
-//		if val.IsNil() {
-//			return "nil", nil, nil
-//		}
-//		val = val.Elem() // Dereference but remember it's a pointer for the output.
-//		literal, imports, err := generateLiteral(val, nil)
-//		if err != nil {
-//			return "", nil, err
-//		}
-//		return "&" + literal, imports, nil // Wrap in & to denote it's a pointer.
-//	}
-//
-//	return generateLiteral(val, nil)
-//}
 
 func GenerateLiteral(value reflect.Value, importSet ImportSet) (string, ImportSet, error) {
 	if !value.IsValid() {
@@ -53,7 +40,7 @@ func GenerateLiteral(value reflect.Value, importSet ImportSet) (string, ImportSe
 	case reflect.Struct:
 		pkgPath := value.Type().PkgPath()
 		// TODO: Is this check reasonable?
-		if pkgPath != "" && pkgPath != "main" {
+		if pkgPath != "" && pkgPath != defaultPackagePath {
 			if importSet == nil {
 				importSet = make(map[string]bool)
 			}
@@ -80,9 +67,8 @@ func processStruct(value reflect.Value, importSet ImportSet) (string, ImportSet,
 	typ := value.Type()
 
 	name := typ.Name()
-	// TODO: This is iffy.
 	pkgPath := typ.PkgPath()
-	if pkgPath != "main" {
+	if pkgPath != defaultPackagePath {
 		pkgPathSlice := strings.Split(pkgPath, "/")
 		name = pkgPathSlice[len(pkgPathSlice)-1] + "." + name
 	}
@@ -156,4 +142,10 @@ func processPointer(value reflect.Value, importSet ImportSet) (string, ImportSet
 	}
 
 	return "&" + literal, importSet, nil
+}
+
+func init() {
+	if goPackage := os.Getenv("GOPACKAGE"); goPackage != "" {
+		defaultPackagePath = goPackage
+	}
 }
