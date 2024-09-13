@@ -72,8 +72,7 @@ func GenerateLiteral(value reflect.Value, importSet ImportSet) (string, ImportSe
 		}
 		return "nil", importSet, nil
 	default:
-		//return fmt.Sprintf("%v", value.Interface()), importSet, nil
-		return "", nil, errors.New("unexpected type")
+		return fmt.Sprintf("%v", value.Interface()), importSet, nil
 	}
 }
 
