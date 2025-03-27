@@ -78,6 +78,10 @@ func processStruct(value reflect.Value, importSet ImportSet) (string, ImportSet,
 		field := typ.Field(i)
 		fieldValue := value.Field(i)
 
+		if fieldValue.IsZero() {
+			continue
+		}
+
 		var fieldLiteral string
 		var err error
 
