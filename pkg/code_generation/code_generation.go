@@ -3,6 +3,7 @@ package code_generation
 import (
 	"fmt"
 	"go/format"
+	"math"
 	"os"
 	"reflect"
 	"strconv"
@@ -91,12 +92,77 @@ func GenerateLiteral(value reflect.Value, importSet ImportSet) (string, ImportSe
 	}
 
 	switch value.Kind() {
+	case reflect.Invalid:
+		// Redundant due to IsValid check, but explicit case for clarity
+		return "", nil, motmedelErrors.NewWithTrace(codeGenerationErrors.ErrInvalidValue, value)
+	case reflect.Bool:
+		if value.Bool() {
+			return "true", importSet, nil
+		}
+		return "false", importSet, nil
 	case reflect.String:
 		return strconv.Quote(value.String()), importSet, nil
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return fmt.Sprint(value.Int()), importSet, nil
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		return fmt.Sprint(value.Uint()), importSet, nil
+	case reflect.Uintptr:
+		// Represent as a decimal literal
+		return fmt.Sprint(value.Uint()), importSet, nil
+	case reflect.Float32:
+		f := value.Float()
+		if math.IsNaN(f) {
+			if importSet == nil {
+				importSet = make(map[string]struct{})
+			}
+			importSet["math"] = struct{}{}
+			return "math.NaN()", importSet, nil
+		}
+		if i := math.IsInf(f, 0); i {
+			if importSet == nil {
+				importSet = make(map[string]struct{})
+			}
+			importSet["math"] = struct{}{}
+			if math.IsInf(f, 1) {
+				return "math.Inf(1)", importSet, nil
+			}
+			return "math.Inf(-1)", importSet, nil
+		}
+		return strconv.FormatFloat(f, 'g', -1, 32), importSet, nil
+	case reflect.Float64:
+		f := value.Float()
+		if math.IsNaN(f) {
+			if importSet == nil {
+				importSet = make(map[string]struct{})
+			}
+			importSet["math"] = struct{}{}
+			return "math.NaN()", importSet, nil
+		}
+		if i := math.IsInf(f, 0); i {
+			if importSet == nil {
+				importSet = make(map[string]struct{})
+			}
+			importSet["math"] = struct{}{}
+			if math.IsInf(f, 1) {
+				return "math.Inf(1)", importSet, nil
+			}
+			return "math.Inf(-1)", importSet, nil
+		}
+		return strconv.FormatFloat(f, 'g', -1, 64), importSet, nil
+	case reflect.Complex64:
+		c := value.Complex()
+		r := real(c)
+		i := imag(c)
+		rLit, importSet2 := formatFloatWithMathImport(r, 32, importSet)
+		iLit, importSet3 := formatFloatWithMathImport(i, 32, importSet2)
+		return fmt.Sprintf("complex(%s, %s)", rLit, iLit), importSet3, nil
+	case reflect.Complex128:
+		c := value.Complex()
+		r := real(c)
+		i := imag(c)
+		rLit, importSet2 := formatFloatWithMathImport(r, 64, importSet)
+		iLit, importSet3 := formatFloatWithMathImport(i, 64, importSet2)
+		return fmt.Sprintf("complex(%s, %s)", rLit, iLit), importSet3, nil
 	case reflect.Struct:
 		pkgPath := value.Type().PkgPath()
 		// TODO: Is this check reasonable?
@@ -118,6 +184,16 @@ func GenerateLiteral(value reflect.Value, importSet ImportSet) (string, ImportSe
 			return "", nil, motmedelErrors.NewWithTrace(codeGenerationErrors.ErrUnsupportedFunctionFields, value)
 		}
 		return "nil", importSet, nil
+	case reflect.Interface:
+		// For interface{} values, produce a quoted string of the fmt %v representation
+		return strconv.Quote(fmt.Sprintf("%v", value.Interface())), importSet, nil
+	case reflect.Chan:
+		if !value.IsNil() {
+			return "", nil, motmedelErrors.NewWithTrace(codeGenerationErrors.ErrUnsupportedChanField, value)
+		}
+		return "nil", importSet, nil
+	case reflect.UnsafePointer:
+		return "", nil, motmedelErrors.NewWithTrace(codeGenerationErrors.ErrUnsupportedUnsafePointerField, value)
 	default:
 		return fmt.Sprintf("%v", value.Interface()), importSet, nil
 	}
@@ -169,7 +245,13 @@ func processSlice(value reflect.Value, importSet ImportSet) (string, ImportSet, 
 
 		elements[i] = elemLiteral
 	}
-	return fmt.Sprintf("[]%s{%s}", value.Type().Elem(), strings.Join(elements, ", ")), importSet, nil
+	// If the slice element type is interface{}, change it to string
+	elemType := value.Type().Elem()
+	elemTypeStr := elemType.String()
+	if elemType.Kind() == reflect.Interface {
+		elemTypeStr = "string"
+	}
+	return fmt.Sprintf("[]%s{%s}", elemTypeStr, strings.Join(elements, ", ")), importSet, nil
 }
 
 func processMap(value reflect.Value, importSet ImportSet) (string, ImportSet, error) {
@@ -190,7 +272,14 @@ func processMap(value reflect.Value, importSet ImportSet) (string, ImportSet, er
 		}
 		elements[i] = fmt.Sprintf("%s: %s", keyLiteral, valueLiteral)
 	}
-	return fmt.Sprintf("map[%s]%s{%s}", value.Type().Key(), value.Type().Elem(), strings.Join(elements, ", ")), importSet, nil
+
+	elemType := value.Type().Elem()
+	elemTypeStr := elemType.String()
+	if elemType.Kind() == reflect.Interface {
+		elemTypeStr = "string"
+	}
+
+	return fmt.Sprintf("map[%s]%s{%s}", value.Type().Key(), elemTypeStr, strings.Join(elements, ", ")), importSet, nil
 }
 
 func processPointer(value reflect.Value, importSet ImportSet) (string, ImportSet, error) {
@@ -206,6 +295,29 @@ func processPointer(value reflect.Value, importSet ImportSet) (string, ImportSet
 	}
 
 	return "&" + literal, importSet, nil
+}
+
+// formatFloatWithMathImport returns a Go expression for the float value, handling NaN/Inf
+// by using math.NaN()/math.Inf(sign) and ensuring the math import is added when needed.
+func formatFloatWithMathImport(f float64, bitSize int, importSet ImportSet) (string, ImportSet) {
+	if math.IsNaN(f) {
+		if importSet == nil {
+			importSet = make(map[string]struct{})
+		}
+		importSet["math"] = struct{}{}
+		return "math.NaN()", importSet
+	}
+	if math.IsInf(f, 0) {
+		if importSet == nil {
+			importSet = make(map[string]struct{})
+		}
+		importSet["math"] = struct{}{}
+		if math.IsInf(f, 1) {
+			return "math.Inf(1)", importSet
+		}
+		return "math.Inf(-1)", importSet
+	}
+	return strconv.FormatFloat(f, 'g', -1, bitSize), importSet
 }
 
 func init() {
