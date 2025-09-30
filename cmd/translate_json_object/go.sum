@@ -1,4 +1,4 @@
 github.com/Motmedel/utils_go v0.0.259 h1:WYKROmEPJg0/JYVRzn4io7hQLjJ/Cb4puI9PMA4UZMM=
 github.com/Motmedel/utils_go v0.0.259/go.mod h1:kKm8jM7GA8M7ICIImi5etOMixRgQfnStBPjEoCMTgbg=
-github.com/vphpersson/code_generation_go v0.0.8 h1:XFgRhOwzWokr7pv/Wh49aB4CHMAcQz7zOuM2J4DBSX4=
-github.com/vphpersson/code_generation_go v0.0.8/go.mod h1:vxDynpCnJa0mWkg1nRuoTM6QwpzXVTUT52HBC3DljgM=
+github.com/vphpersson/code_generation v0.0.9 h1:Qno9N6zc8Mu0S+TR5mh393PYIkgT3IHfmDz7X9tBDcU=
+github.com/vphpersson/code_generation v0.0.9/go.mod h1:vQkQrdFhL5P7xeCQktA7aNIt0tI5013Rz3P08zKP1TU=
