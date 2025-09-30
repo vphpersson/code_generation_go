@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
-	"github.com/vphpersson/code_generation_go/pkg/code_generation"
+	"github.com/vphpersson/code_generation/pkg/code_generation"
 )
 
 var identRx = regexp.MustCompile(`[^0-9A-Za-z_]`)

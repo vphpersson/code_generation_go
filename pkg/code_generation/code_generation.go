@@ -10,10 +10,17 @@ import (
 	"strings"
 
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
-	codeGenerationErrors "github.com/vphpersson/code_generation_go/pkg/errors"
+	codeGenerationErrors "github.com/vphpersson/code_generation/pkg/errors"
 )
 
 var defaultPackagePath = "main"
+
+const (
+	nilLiteral    = "nil"
+	infLiteral    = "math.Inf(1)"
+	negInfLiteral = "math.Inf(-1)"
+	nanLiteral    = "math.NaN()"
+)
 
 type ImportSet map[string]struct{}
 
@@ -116,7 +123,7 @@ func GenerateLiteral(value reflect.Value, importSet ImportSet) (string, ImportSe
 				importSet = make(map[string]struct{})
 			}
 			importSet["math"] = struct{}{}
-			return "math.NaN()", importSet, nil
+			return nanLiteral, importSet, nil
 		}
 		if i := math.IsInf(f, 0); i {
 			if importSet == nil {
@@ -136,7 +143,7 @@ func GenerateLiteral(value reflect.Value, importSet ImportSet) (string, ImportSe
 				importSet = make(map[string]struct{})
 			}
 			importSet["math"] = struct{}{}
-			return "math.NaN()", importSet, nil
+			return nanLiteral, importSet, nil
 		}
 		if i := math.IsInf(f, 0); i {
 			if importSet == nil {
@@ -144,9 +151,9 @@ func GenerateLiteral(value reflect.Value, importSet ImportSet) (string, ImportSe
 			}
 			importSet["math"] = struct{}{}
 			if math.IsInf(f, 1) {
-				return "math.Inf(1)", importSet, nil
+				return infLiteral, importSet, nil
 			}
-			return "math.Inf(-1)", importSet, nil
+			return negInfLiteral, importSet, nil
 		}
 		return strconv.FormatFloat(f, 'g', -1, 64), importSet, nil
 	case reflect.Complex64:
@@ -183,7 +190,7 @@ func GenerateLiteral(value reflect.Value, importSet ImportSet) (string, ImportSe
 		if !value.IsNil() {
 			return "", nil, motmedelErrors.NewWithTrace(codeGenerationErrors.ErrUnsupportedFunctionFields, value)
 		}
-		return "nil", importSet, nil
+		return nilLiteral, importSet, nil
 	case reflect.Interface:
 		// For interface{} values, produce a quoted string of the fmt %v representation
 		return strconv.Quote(fmt.Sprintf("%v", value.Interface())), importSet, nil
@@ -191,10 +198,11 @@ func GenerateLiteral(value reflect.Value, importSet ImportSet) (string, ImportSe
 		if !value.IsNil() {
 			return "", nil, motmedelErrors.NewWithTrace(codeGenerationErrors.ErrUnsupportedChanField, value)
 		}
-		return "nil", importSet, nil
+		return nilLiteral, importSet, nil
 	case reflect.UnsafePointer:
 		return "", nil, motmedelErrors.NewWithTrace(codeGenerationErrors.ErrUnsupportedUnsafePointerField, value)
 	default:
+		// TODO: All possible cases are handled; this should error?
 		return fmt.Sprintf("%v", value.Interface()), importSet, nil
 	}
 }
@@ -284,7 +292,7 @@ func processMap(value reflect.Value, importSet ImportSet) (string, ImportSet, er
 
 func processPointer(value reflect.Value, importSet ImportSet) (string, ImportSet, error) {
 	if value.IsNil() {
-		return "nil", importSet, nil
+		return nilLiteral, importSet, nil
 	}
 
 	var literal string
@@ -305,7 +313,7 @@ func formatFloatWithMathImport(f float64, bitSize int, importSet ImportSet) (str
 			importSet = make(map[string]struct{})
 		}
 		importSet["math"] = struct{}{}
-		return "math.NaN()", importSet
+		return nanLiteral, importSet
 	}
 	if math.IsInf(f, 0) {
 		if importSet == nil {
@@ -313,9 +321,9 @@ func formatFloatWithMathImport(f float64, bitSize int, importSet ImportSet) (str
 		}
 		importSet["math"] = struct{}{}
 		if math.IsInf(f, 1) {
-			return "math.Inf(1)", importSet
+			return infLiteral, importSet
 		}
-		return "math.Inf(-1)", importSet
+		return negInfLiteral, importSet
 	}
 	return strconv.FormatFloat(f, 'g', -1, bitSize), importSet
 }
