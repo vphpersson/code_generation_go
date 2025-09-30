@@ -79,5 +79,14 @@ func main() {
 		)
 	}
 
-	fmt.Println(string(output))
+	if fileName := code_generation.GetGeneratedFilename(); fileName != "" {
+		if err := os.WriteFile(fileName, output, 0644); err != nil {
+			logger.FatalWithExitingMessage(
+				"An error occurred when writing the file.",
+				motmedelErrors.New(fmt.Errorf("os write file: %w", err), fileName, output),
+			)
+		}
+	} else {
+		fmt.Println(string(output))
+	}
 }
